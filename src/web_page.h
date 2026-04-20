@@ -269,30 +269,18 @@ const char index_html[] PROGMEM = R"rawliteral(
                     </div>
                     <div class="info-device-box">
                         <div class="info-box num-box-mid">
-                            <!-- <div>
+                            <div>
                                 <span class="num-color mid-num" id="r">-1.01</span>
-                                <span id="rn">ROLL</span>
+                                <span id="rn">ROLL (deg)</span>
                             </div>
                             <div>
                                 <span class="num-color mid-num" id="p">-1.01</span>
-                                <span id="pn">PITCH</span>
+                                <span id="pn">PITCH (deg)</span>
                             </div>
                             <div>
                                 <span class="num-color mid-num" id="y">-1.01</span>
-                                <span id="yn">YAW</span>
+                                <span id="yn">YAW (deg)</span>
                             </div>
-                            <div>
-                                <span class="num-color mid-num" id="mX">-1.01</span>
-                                <span id="mXn">PAN</span>
-                            </div>
-                            <div>
-                                <span class="num-color mid-num" id="mY">-1.01</span>
-                                <span id="mYn">TILT</span>
-                            </div>
-                            <div>
-                                <span class="num-color mid-num" id="mZ">-1.01</span>
-                                <span id="mZn">SPD_R</span>
-                            </div> -->
                         </div>
                     </div>
                     <div class="info-device-box">
@@ -618,6 +606,24 @@ const char index_html[] PROGMEM = R"rawliteral(
                 </div>
             </div>
         </section>
+        <section>
+            <div>
+                <h2 class="h2-tt" id="logsTitle">Live Logs</h2>
+            </div>
+            <div class="fb-info">
+                <span style="color: rgba(150, 200, 150, 0.9); font-family: monospace; font-size: 12px;">
+                    <strong>UDP Log Streaming:</strong><br><br>
+                    Port: <strong>14514</strong><br>
+                    Protocol: UDP Broadcast<br><br>
+                    Browser JavaScript cannot directly listen to UDP sockets.<br>
+                    Use an external listener to view real-time serial output:<br>
+                    • macOS: <code>python3 udp_listener.py</code> (recommended)<br>
+                    • Linux: <code>nc -kul 14514</code><br>
+                    • Windows: <code>ncat -ul 14514</code><br><br>
+                    All Serial.print() output is mirrored to UDP in parallel.
+                </span>
+            </div>
+        </section>
     </main>
 <script>
     var cmdA;
@@ -679,7 +685,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         var xhttp = new XMLHttpRequest();
         xhttp.onreadystatechange = function() {
             if (this.readyState == 4 && this.status == 200) {
-              document.getElementById("fbInfo").innerHTML =
+                            document.getElementById("fbInfo").innerHTML =
               this.responseText;
             }
         };
@@ -704,9 +710,15 @@ const char index_html[] PROGMEM = R"rawliteral(
                     document.getElementById("V").classList.add("num-color");
                 }
 
-                // document.getElementById("r").innerHTML = jsonResponse.r.toFixed(2);
-                // document.getElementById("p").innerHTML = jsonResponse.p.toFixed(2);
-                // document.getElementById("y").innerHTML = jsonResponse.y.toFixed(2);
+                if (jsonResponse.hasOwnProperty('r') && jsonResponse.hasOwnProperty('p') && jsonResponse.hasOwnProperty('y')) {
+                    document.getElementById("r").innerHTML = jsonResponse.r.toFixed(2);
+                    document.getElementById("p").innerHTML = jsonResponse.p.toFixed(2);
+                    document.getElementById("y").innerHTML = jsonResponse.y.toFixed(2);
+                } else {
+                    document.getElementById("r").innerHTML = "--";
+                    document.getElementById("p").innerHTML = "--";
+                    document.getElementById("y").innerHTML = "--";
+                }
                 // document.getElementById("mZ").innerHTML = speed_rate;
 
                 // if (jsonResponse.hasOwnProperty('pan')) {

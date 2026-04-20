@@ -1,3 +1,107 @@
+// --- --- --- Distance Measurement Handlers --- --- ---
+
+void distanceSetPointA() {
+	// Check if explicit x, y, z values are provided
+	if (jsonCmdReceive["x"].is<double>() && jsonCmdReceive["y"].is<double>() && jsonCmdReceive["z"].is<double>()) {
+		dist_point_a_x = jsonCmdReceive["x"].as<double>();
+		dist_point_a_y = jsonCmdReceive["y"].as<double>();
+		dist_point_a_z = jsonCmdReceive["z"].as<double>();
+	} else {
+		// Use current arm position
+		dist_point_a_x = lastX;
+		dist_point_a_y = lastY;
+		dist_point_a_z = lastZ;
+	}
+	dist_point_a_set = true;
+	
+	if (InfoPrint == 1) {
+		Serial.printf("Point A set: x=%.2f, y=%.2f, z=%.2f\n", dist_point_a_x, dist_point_a_y, dist_point_a_z);
+	}
+}
+
+void distanceSetPointB() {
+	if (!dist_point_a_set) {
+		if (InfoPrint == 1) {
+			Serial.println("Error: Point A not set. Use CMD_DISTANCE_SET_A first.");
+		}
+		return;
+	}
+	
+	// Check if explicit x, y, z values are provided
+	if (jsonCmdReceive["x"].is<double>() && jsonCmdReceive["y"].is<double>() && jsonCmdReceive["z"].is<double>()) {
+		dist_point_b_x = jsonCmdReceive["x"].as<double>();
+		dist_point_b_y = jsonCmdReceive["y"].as<double>();
+		dist_point_b_z = jsonCmdReceive["z"].as<double>();
+	} else {
+		// Use current arm position
+		dist_point_b_x = lastX;
+		dist_point_b_y = lastY;
+		dist_point_b_z = lastZ;
+	}
+	
+	// Calculate distance: sqrt((x2-x1)^2 + (y2-y1)^2 + (z2-z1)^2)
+	double dx = dist_point_b_x - dist_point_a_x;
+	double dy = dist_point_b_y - dist_point_a_y;
+	double dz = dist_point_b_z - dist_point_a_z;
+	dist_last_measurement = sqrt(dx*dx + dy*dy + dz*dz);
+	
+	// Update statistics
+	dist_count++;
+	dist_sum += dist_last_measurement;
+	dist_sum_squares += dist_last_measurement * dist_last_measurement;
+	
+	if (dist_last_measurement < dist_min) {
+		dist_min = dist_last_measurement;
+	}
+	if (dist_last_measurement > dist_max) {
+		dist_max = dist_last_measurement;
+	}
+	
+	if (InfoPrint == 1) {
+		Serial.printf("Point B set: x=%.2f, y=%.2f, z=%.2f\n", dist_point_b_x, dist_point_b_y, dist_point_b_z);
+		Serial.printf("Distance A→B: %.2f mm\n", dist_last_measurement);
+	}
+}
+
+void distanceReset() {
+	// Reset all measurement data
+	dist_point_a_set = false;
+	dist_last_measurement = 0;
+	dist_min = 9999999.0;
+	dist_max = 0;
+	dist_sum = 0;
+	dist_sum_squares = 0;
+	dist_count = 0;
+	
+	if (InfoPrint == 1) {
+		Serial.println("Distance measurement reset.");
+	}
+}
+
+void distanceReport() {
+	if (dist_count == 0) {
+		if (InfoPrint == 1) {
+			Serial.println("No measurements recorded.");
+		}
+		return;
+	}
+	
+	double mean = dist_sum / dist_count;
+	double variance = (dist_sum_squares / dist_count) - (mean * mean);
+	double stddev = sqrt(variance > 0 ? variance : 0);
+	
+	Serial.println("\n=== Distance Measurement Statistics ===");
+	Serial.printf("Total Measurements: %d\n", dist_count);
+	Serial.printf("Latest Distance:   %.2f mm\n", dist_last_measurement);
+	Serial.printf("Minimum Distance:  %.2f mm\n", dist_min);
+	Serial.printf("Maximum Distance:  %.2f mm\n", dist_max);
+	Serial.printf("Mean Distance:     %.2f mm\n", mean);
+	Serial.printf("Std Deviation:     %.2f mm\n", stddev);
+	Serial.printf("Point A: (%.2f, %.2f, %.2f)\n", dist_point_a_x, dist_point_a_y, dist_point_a_z);
+	Serial.printf("Point B: (%.2f, %.2f, %.2f)\n", dist_point_b_x, dist_point_b_y, dist_point_b_z);
+	Serial.println("====================================\n");
+}
+
 void jsonCmdReceiveHandler(){
 	int cmdType = jsonCmdReceive["T"].as<int>();
 	switch(cmdType){
@@ -6,17 +110,14 @@ void jsonCmdReceiveHandler(){
 												emergencyStopProcessing();
   											setGoalSpeed(0, 0);
 												break;
-	case CMD_SPEED_CTRL:	if (jsonCmdReceive.containsKey("T") &&
-														jsonCmdReceive.containsKey("L") &&
-														jsonCmdReceive.containsKey("R")){
-													if (jsonCmdReceive["L"].is<float>() &&
-															jsonCmdReceive["R"].is<float>()){
+	case CMD_SPEED_CTRL:	if (jsonCmdReceive["T"].is<int>() &&
+														(jsonCmdReceive["L"].is<float>() || jsonCmdReceive["L"].is<int>()) &&
+														(jsonCmdReceive["R"].is<float>() || jsonCmdReceive["R"].is<int>())){
 														heartbeatStopFlag = false;
 														lastCmdRecvTime = millis();
 														setGoalSpeed(
 														jsonCmdReceive["L"],
 														jsonCmdReceive["R"]);
-													}
 												} break;
 	case CMD_PWM_INPUT:		usePIDCompute = false;
 												heartbeatStopFlag = false;
@@ -495,6 +596,16 @@ void jsonCmdReceiveHandler(){
 												jsonCmdReceive["main"],
 												jsonCmdReceive["module"]
 												);
+												break;
+
+	// Distance measurement
+	case CMD_DISTANCE_SET_A: 	distanceSetPointA();
+												break;
+	case CMD_DISTANCE_SET_B:	distanceSetPointB();
+												break;
+	case CMD_DISTANCE_RESET:	distanceReset();
+												break;
+	case CMD_DISTANCE_REPORT:	distanceReport();
 												break;
 	}
 }

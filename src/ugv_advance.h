@@ -386,9 +386,10 @@ void baseInfoFeedback() {
 	jsonInfoHttp["L"] = speedGetA;
 	jsonInfoHttp["R"] = speedGetB;
 
-	// jsonInfoHttp["r"] = icm_roll;
-	// jsonInfoHttp["p"] = icm_pitch;
-	// jsonInfoHttp["y"] = icm_yaw;
+	const double rad_to_deg = 57.29577951308232;
+	jsonInfoHttp["r"] = icm_roll * rad_to_deg;
+	jsonInfoHttp["p"] = icm_pitch * rad_to_deg;
+	jsonInfoHttp["y"] = icm_yaw * rad_to_deg;
 
 	// jsonInfoHttp["q0"] = q0;
 	// jsonInfoHttp["q1"] = q1;

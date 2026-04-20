@@ -325,6 +325,27 @@
 
 // 124/125...131
 
+// distance measurement helpers (unit: mm)
+// set point A using current arm feedback lastX/lastY/lastZ
+// {"T":145}
+// or set A explicitly
+// {"T":145,"x":235,"y":0,"z":234}
+#define CMD_DISTANCE_SET_A 145
+
+// set point B and calculate distance from A
+// {"T":146}
+// or set B explicitly
+// {"T":146,"x":255,"y":30,"z":220}
+#define CMD_DISTANCE_SET_B 146
+
+// clear measurement state and statistics
+// {"T":147}
+#define CMD_DISTANCE_RESET 147
+
+// print latest measurement report and statistics
+// {"T":148}
+#define CMD_DISTANCE_REPORT 148
+
 
 // === === === MISSION CTRL & FILE CTRL === === ===
 

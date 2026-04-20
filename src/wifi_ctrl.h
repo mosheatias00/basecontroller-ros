@@ -39,7 +39,7 @@ unsigned long connectionStartTime;
 unsigned long connectionTimeout = 15000;
 byte WIFI_CURRENT_MODE = -1;
 IPAddress localIP;
-DynamicJsonDocument wifiDoc(256);
+JsonDocument wifiDoc;
 bool wifiConfigFound = false;
 
 

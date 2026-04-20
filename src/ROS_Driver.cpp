@@ -1,8 +1,8 @@
 #include <Arduino.h>
 #include <ArduinoJson.h>
-StaticJsonDocument<256> jsonCmdReceive;
-StaticJsonDocument<256> jsonInfoSend;
-StaticJsonDocument<1024> jsonInfoHttp;
+JsonDocument jsonCmdReceive;
+JsonDocument jsonInfoSend;
+JsonDocument jsonInfoHttp;
 
 #include <SCServo.h>
 #include <nvs_flash.h>
@@ -18,6 +18,7 @@ StaticJsonDocument<1024> jsonInfoHttp;
 #include <PID_v2.h>
 #include <SimpleKalmanFilter.h>
 #include <math.h>
+#include "udp_log.h"
 #define ICM_20948_USE_DMP 1
 #include "ICM_20948.h"
 
@@ -65,6 +66,9 @@ StaticJsonDocument<1024> jsonInfoHttp;
 
 // functions for http & web server.
 #include "http_server.h"
+
+// functions for OTA updates.
+#include "ota_ctrl.h"
 
 
 void moduleType_RoArmM2() {
@@ -134,7 +138,7 @@ void setup() {
   // Value = (DMP running rate / ODR ) - 1
   // E.g. For a 5Hz ODR rate when DMP is running at 55Hz, value = (55/5) - 1 = 10.
 
-  // success &= (myICM.setDMPODRrate(DMP_ODR_Reg_Quat9, 3) == ICM_20948_Stat_Ok); // Set to the maximum
+  success &= (myICM.setDMPODRrate(DMP_ODR_Reg_Quat9, 3) == ICM_20948_Stat_Ok); // Set to the maximum
 
   success &= (myICM.setDMPODRrate(DMP_ODR_Reg_Accel, 3) == ICM_20948_Stat_Ok); // Set to the maximum
   success &= (myICM.setDMPODRrate(DMP_ODR_Reg_Gyro, 3) == ICM_20948_Stat_Ok); // Set to the maximum
@@ -254,6 +258,11 @@ void setup() {
   if(InfoPrint == 1){Serial.println("WiFi init.");}
   initWifi();
 
+  screenLine_3 = "UDP log init";
+  oled_update();
+  if(InfoPrint == 1){Serial.println("UDP log init.");}
+  initUdpLog();
+
   screenLine_3 = "http & web init";
   oled_update();
   if(InfoPrint == 1){Serial.println("http & web init.");}
@@ -263,6 +272,11 @@ void setup() {
   oled_update();
   if(InfoPrint == 1){Serial.println("ESP-NOW init.");}
   initEspNow();
+
+  screenLine_3 = "OTA init";
+  oled_update();
+  if(InfoPrint == 1){Serial.println("OTA init.");}
+  setupOTA();
 
   screenLine_3 = "IMU Calibrating";
   oled_update();
@@ -297,38 +311,36 @@ void loop() {
   myICM.readDMPdataFromFIFO(&data);
 
   if ((myICM.status == ICM_20948_Stat_Ok) || (myICM.status == ICM_20948_Stat_FIFOMoreDataAvail)) {
-    // if ((data.header & DMP_header_bitmap_Quat9) > 0) {
-    //   // Scale to +/- 1
-    //   q1 = ((double)data.Quat9.Data.Q1) / 1073741824.0; // Convert to double. Divide by 2^30
-    //   q2 = ((double)data.Quat9.Data.Q2) / 1073741824.0; // Convert to double. Divide by 2^30
-    //   q3 = ((double)data.Quat9.Data.Q3) / 1073741824.0; // Convert to double. Divide by 2^30
-    //   q0 = sqrt(1.0 - ((q1 * q1) + (q2 * q2) + (q3 * q3)));
+    if ((data.header & DMP_header_bitmap_Quat9) > 0) {
+      // Scale quaternion to +/-1 and derive Euler angles in radians.
+      q1 = ((double)data.Quat9.Data.Q1) / 1073741824.0;
+      q2 = ((double)data.Quat9.Data.Q2) / 1073741824.0;
+      q3 = ((double)data.Quat9.Data.Q3) / 1073741824.0;
 
-    //   q2sqr = q2 * q2;
+      double q0_sq = 1.0 - ((q1 * q1) + (q2 * q2) + (q3 * q3));
+      if (q0_sq < 0.0) {
+        q0_sq = 0.0;
+      }
+      q0 = sqrt(q0_sq);
 
-    //   // roll (x-axis rotation)
-    //   t0 = +2.0 * (q0 * q1 + q2 * q3);
-    //   t1 = +1.0 - 2.0 * (q1 * q1 + q2sqr);
-    //   icm_roll = atan2(t0, t1);
+      q2sqr = q2 * q2;
 
-    //   // pitch (y-axis rotation)
-    //   t2 = +2.0 * (q0 * q2 - q3 * q1);
-    //   t2 = t2 > 1.0 ? 1.0 : t2;
-    //   t2 = t2 < -1.0 ? -1.0 : t2;
-    //   icm_pitch = asin(t2);
+      // roll (x-axis rotation)
+      t0 = +2.0 * (q0 * q1 + q2 * q3);
+      t1 = +1.0 - 2.0 * (q1 * q1 + q2sqr);
+      icm_roll = atan2(t0, t1);
 
-    //   // yaw (z-axis rotation)
-    //   t3 = +2.0 * (q0 * q3 + q1 * q2);
-    //   t4 = +1.0 - 2.0 * (q2sqr + q3 * q3);
-    //   icm_yaw = atan2(t3, t4);
+      // pitch (y-axis rotation)
+      t2 = +2.0 * (q0 * q2 - q3 * q1);
+      t2 = t2 > 1.0 ? 1.0 : t2;
+      t2 = t2 < -1.0 ? -1.0 : t2;
+      icm_pitch = asin(t2);
 
-    //   // Serial.print(F("r:"));
-    //   // Serial.print(icm_roll, 2);
-    //   // Serial.print(F(" p:"));
-    //   // Serial.print(icm_pitch, 2);
-    //   // Serial.print(F(" y:"));
-    //   // Serial.println(icm_yaw, 2);
-    // }
+      // yaw (z-axis rotation)
+      t3 = +2.0 * (q0 * q3 + q1 * q2);
+      t4 = +1.0 - 2.0 * (q2sqr + q3 * q3);
+      icm_yaw = atan2(t3, t4);
+    }
 
     if ((data.header & DMP_header_bitmap_Accel) > 0) {
       ax = data.Raw_Accel.Data.X;
@@ -349,6 +361,7 @@ void loop() {
 
   serialCtrl();
   server.handleClient();
+  ArduinoOTA.handle();
 
   // read and compute the info of joints.
   switch (moduleType) {

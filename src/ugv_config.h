@@ -426,4 +426,24 @@ struct biasStore
   int32_t biasCPassZ = 0;
 };
 
+// --- --- --- distance measurement --- --- ---
+// Distance measurement state (unit: mm)
+double dist_point_a_x = 0;
+double dist_point_a_y = 0;
+double dist_point_a_z = 0;
+
+double dist_point_b_x = 0;
+double dist_point_b_y = 0;
+double dist_point_b_z = 0;
+
+double dist_last_measurement = 0;
+bool dist_point_a_set = false;
+
+// Statistics tracking
+double dist_min = 9999999.0;
+double dist_max = 0;
+double dist_sum = 0;
+double dist_sum_squares = 0;
+uint32_t dist_count = 0;
+
 biasStore store;

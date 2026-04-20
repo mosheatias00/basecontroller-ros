@@ -1,0 +1,63 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "pio: build",
+      "type": "shell",
+      "command": "./.venv/bin/platformio",
+      "args": ["run"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": {
+        "kind": "build",
+        "isDefault": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "pio: upload",
+      "type": "shell",
+      "command": "./.venv/bin/platformio",
+      "args": ["run", "-t", "upload"],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "group": "build",
+      "problemMatcher": []
+    },
+    {
+      "label": "pio: monitor",
+      "type": "shell",
+      "command": "./.venv/bin/platformio",
+      "args": [
+        "device",
+        "monitor",
+        "--port",
+        "/dev/cu.wchusbserial58750040011",
+        "--baud",
+        "115200"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    },
+    {
+      "label": "udp: logs",
+      "type": "shell",
+      "command": "python3",
+      "args": [
+        "tools/udp_log_listener.py",
+        "--port",
+        "14514"
+      ],
+      "options": {
+        "cwd": "${workspaceFolder}"
+      },
+      "isBackground": true,
+      "problemMatcher": []
+    }
+  ]
+}
