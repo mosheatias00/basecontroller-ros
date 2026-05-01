@@ -96,12 +96,7 @@ Compatibility mapping retained in IMU feedback:
 
 ## 5) Web UI Changes
 
-- Added UI command shortcut for `CMD_ODOM_RESET` (`T:149`).
-- Added distance measurement panel with:
-  - current anchor set
-  - current distance readback
-  - status/source/stats display
-- JS naming adjusted to wheel-odometry baseline semantics.
+- No new UI panels were added. All new functionality is accessible via JSON API only.
 
 ## 6) Build and Environment Changes
 
