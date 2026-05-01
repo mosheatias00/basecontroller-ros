@@ -141,6 +141,25 @@
 // {"T":143,"cmd":0}
 #define CMD_UART_ECHO_MODE	143
 
+// reset IMU-only odometry state and gravity reference
+// robot should be still when calling this command
+// {"T":149}
+#define CMD_ODOM_RESET 149
+
+// Start multi-leg base drive plan.
+// Each leg: {"yaw":deg,"dist":m} (alias: "d" for distance)
+// Optional "anchor":1 resets anchor to current pose before starting.
+// {"T":150,"anchor":1,"legs":[{"yaw":0,"dist":1.0},{"yaw":90,"dist":0.5}]}
+#define CMD_BASE_DRIVE_PLAN 150
+
+// Set current wheel odometry point as anchor for anchor-distance telemetry.
+// {"T":151}
+#define CMD_BASE_SET_ANCHOR 151
+
+// Abort current drive plan immediately.
+// {"T":152}
+#define CMD_BASE_DRIVE_ABORT 152
+
 
 
 // LIGHT/GIMBAL/MOVTION CTRL

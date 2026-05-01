@@ -382,6 +382,7 @@ void baseInfoFeedback() {
 
 	jsonInfoHttp.clear();
 	jsonInfoHttp["T"] = FEEDBACK_BASE_INFO;
+	jsonInfoHttp["ts"] = last_feedback_time;
 
 	jsonInfoHttp["L"] = speedGetA;
 	jsonInfoHttp["R"] = speedGetB;
@@ -413,6 +414,42 @@ void baseInfoFeedback() {
 
 	long int odr_cm = (en_odom_r * 100);
 	jsonInfoHttp["odr"] = odr_cm;
+
+	double imux_cm = wheel_odom_x * 100.0;
+	jsonInfoHttp["imux"] = imux_cm;
+
+	double imuy_cm = wheel_odom_y * 100.0;
+	jsonInfoHttp["imuy"] = imuy_cm;
+
+	double imud_cm = wheel_odom_dist * 100.0;
+	jsonInfoHttp["imud"] = imud_cm;
+
+	double anchor_dx = wheel_odom_x - drive_anchor_x;
+	double anchor_dy = wheel_odom_y - drive_anchor_y;
+	double anchor_disp_cm = sqrt((anchor_dx * anchor_dx) + (anchor_dy * anchor_dy)) * 100.0;
+	double anchor_path_cm = (wheel_odom_path - drive_anchor_path) * 100.0;
+	if (anchor_path_cm < 0) {
+		anchor_path_cm = 0;
+	}
+
+	jsonInfoHttp["anchd"] = anchor_path_cm;
+	jsonInfoHttp["anchs"] = anchor_disp_cm;
+
+	double drive_leg_progress = 0;
+	if (drive_plan_active && drive_plan_leg_index < drive_plan_leg_count) {
+		drive_leg_progress = fabs(wheel_odom_path - drive_plan_leg_start_path);
+	}
+	double drive_total_progress_cm = (drive_plan_completed_dist + drive_leg_progress) * 100.0;
+	jsonInfoHttp["dact"] = drive_plan_active ? 1 : 0;
+	jsonInfoHttp["dleg"] = drive_plan_active ? (drive_plan_leg_index + 1) : 0;
+	jsonInfoHttp["dlegs"] = drive_plan_leg_count;
+	jsonInfoHttp["dacc"] = drive_total_progress_cm;
+	jsonInfoHttp["dtgt"] = drive_plan_total_target_dist * 100.0;
+
+	jsonInfoHttp["ivx"] = wheel_odom_v;
+	jsonInfoHttp["ivy"] = 0;
+
+	jsonInfoHttp["mhz"] = (int)motor_loop_hz;
 
     int v_int = (int)(loadVoltage_V * 100);
 	jsonInfoHttp["v"] = v_int;

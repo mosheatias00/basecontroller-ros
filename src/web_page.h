@@ -451,6 +451,10 @@ const char index_html[] PROGMEM = R"rawliteral(
                         <p>CMD_BASE_FEEDBACK_FLOW: <span id="cmd131" class="cmd-value">{"T":131,"cmd":0}</span></p>
                         <button class="w-btn" onclick="cmdFill('jsonData', 'cmd131');">INPUT</button>
                     </div>
+                    <div>
+                        <p>CMD_ODOM_RESET: <span id="cmd149" class="cmd-value">{"T":149}</span></p>
+                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd149');">INPUT</button>
+                    </div>
                 </div>
                 <div class="info-box json-cmd-info">
                     <div>
@@ -604,6 +608,25 @@ const char index_html[] PROGMEM = R"rawliteral(
                         <button class="w-btn" onclick="cmdFill('jsonData', 'cmd605');">INPUT</button>
                     </div>
                 </div>
+                <div class="info-box">
+                    <div class="fb-info">
+                        <h2 class="h2-tt">Distance Measurement</h2>
+                        <div class="feedb-p" style="gap: 10px; margin-top: 10px;">
+                            <button class="small-btn" onclick="distanceSetCurrent();">CURRENT</button>
+                            <button class="small-btn" onclick="distanceRead();">READ DISTANCE</button>
+                        </div>
+                        <div style="text-align: left; margin-top: 15px; line-height: 1.8em;">
+                            <span id="distStatus">Status: idle</span><br>
+                            <span id="distA">A: --</span><br>
+                            <span id="distB">Current: --</span><br>
+                            <span id="distLast">Last distance: -- mm</span><br>
+                            <span id="distTs">Timestamp: --</span><br>
+                            <span id="distSource">Source: --</span><br>
+                            <span id="distRaw">Raw pos(11/12/14/15): --</span><br>
+                            <span id="distStats">Stats: count=0, min=--, max=--, mean=--, stddev=--</span>
+                        </div>
+                    </div>
+                </div>
             </div>
         </section>
         <section>
@@ -663,6 +686,11 @@ const char index_html[] PROGMEM = R"rawliteral(
     var steady_status = 0;
     var steady_bias   = 0;
 
+    var wheelDistBaselineSet = false;
+    var wheelDistAwaitBaseline = false;
+    var wheelDistBaseX = 0;
+    var wheelDistBaseY = 0;
+
     getDevInfo();
     ledCtrl(0);
     setInterval(function() {
@@ -685,7 +713,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         var xhttp = new XMLHttpRequest();
         xhttp.onreadystatechange = function() {
             if (this.readyState == 4 && this.status == 200) {
-                            document.getElementById("fbInfo").innerHTML =
+              document.getElementById("fbInfo").innerHTML =
               this.responseText;
             }
         };
@@ -757,6 +785,120 @@ const char index_html[] PROGMEM = R"rawliteral(
         xhttp.open("GET", "js?json=" + jsonString, true);
         xhttp.send();
     }
+
+    function distanceSend(cmdObj) {
+        var jsonString = JSON.stringify(cmdObj);
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+                document.getElementById("fbInfo").innerHTML = this.responseText;
+                try {
+                    var resp = JSON.parse(this.responseText);
+                    distanceUpdateUi(resp);
+                } catch (e) {
+                    document.getElementById("distStatus").innerHTML = "Status: invalid response";
+                }
+            }
+        };
+        xhttp.open("GET", "js?json=" + jsonString, true);
+        xhttp.send();
+    }
+
+    function distanceSetCurrent() {
+        wheelDistAwaitBaseline = true;
+        wheelDistBaselineSet = false;
+        distanceSend({"T":149});
+    }
+
+    function distanceRead() {
+        distanceSend({"T":130});
+    }
+
+    function distanceUpdateUi(resp) {
+        if (resp.ok === 0) {
+            document.getElementById("distStatus").innerHTML = "Status: " + (resp.err || "error");
+            return;
+        }
+
+        document.getElementById("distStatus").innerHTML = "Status: " + (resp.msg || "ok");
+
+        if (resp.T === 149) {
+            document.getElementById("distA").innerHTML = "A: current point set (odom reset)";
+            document.getElementById("distB").innerHTML = "Current: --";
+            document.getElementById("distLast").innerHTML = "Last distance: --";
+            document.getElementById("distStats").innerHTML = "Stats: wheel odometry estimate";
+
+            // Lock baseline from the next base feedback frame after reset.
+            setTimeout(function() {
+                distanceRead();
+            }, 120);
+        }
+
+        if (resp.hasOwnProperty("source")) {
+            document.getElementById("distSource").innerHTML = "Source: " + resp.source;
+        }
+
+        if (resp.hasOwnProperty("imux") && resp.hasOwnProperty("imuy")) {
+            var currX = Number(resp.imux);
+            var currY = Number(resp.imuy);
+
+            if (wheelDistAwaitBaseline || !wheelDistBaselineSet) {
+                wheelDistBaseX = currX;
+                wheelDistBaseY = currY;
+                wheelDistBaselineSet = true;
+                wheelDistAwaitBaseline = false;
+            }
+
+            var dx = currX - wheelDistBaseX;
+            var dy = currY - wheelDistBaseY;
+            var deltaCm = Math.sqrt((dx * dx) + (dy * dy));
+
+            document.getElementById("distA").innerHTML = "A: (" + wheelDistBaseX + ", " + wheelDistBaseY + ") cm";
+            document.getElementById("distB").innerHTML = "Current: (" + currX + ", " + currY + ") cm";
+            document.getElementById("distLast").innerHTML = "Last distance: " + deltaCm.toFixed(1) + " cm";
+        }
+
+        if (resp.hasOwnProperty("imud")) {
+            document.getElementById("distStats").innerHTML = "Stats: wheel odometry. raw imud=" + resp.imud + " cm";
+        }
+
+        if (resp.hasOwnProperty("ax") && !resp.hasOwnProperty("imux")) {
+            document.getElementById("distA").innerHTML = "A: (" + resp.ax.toFixed(2) + ", " + resp.ay.toFixed(2) + ", " + resp.az.toFixed(2) + ")";
+        }
+
+        if (resp.hasOwnProperty("bx")) {
+            document.getElementById("distB").innerHTML = "Current: (" + resp.bx.toFixed(2) + ", " + resp.by.toFixed(2) + ", " + resp.bz.toFixed(2) + ")";
+        }
+
+        if (resp.hasOwnProperty("d")) {
+            document.getElementById("distLast").innerHTML = "Last distance: " + resp.d.toFixed(2) + " mm";
+        }
+
+        if (resp.hasOwnProperty("ts")) {
+            document.getElementById("distTs").innerHTML = "Timestamp: " + resp.ts + " ms";
+        }
+
+        if (resp.hasOwnProperty("pos11") && resp.hasOwnProperty("pos12") && resp.hasOwnProperty("pos14") && resp.hasOwnProperty("pos15")) {
+            document.getElementById("distRaw").innerHTML = "Raw pos(11/12/14/15): " + resp.pos11 + "/" + resp.pos12 + "/" + resp.pos14 + "/" + resp.pos15;
+        }
+
+        if (resp.hasOwnProperty("count") && !resp.hasOwnProperty("imux")) {
+            document.getElementById("distStats").innerHTML =
+                "Stats: count=" + resp.count +
+                ", min=" + resp.min.toFixed(2) +
+                ", max=" + resp.max.toFixed(2) +
+                ", mean=" + resp.mean.toFixed(2) +
+                ", stddev=" + resp.stddev.toFixed(2);
+        } else if (resp.T === 147) {
+            document.getElementById("distB").innerHTML = "Current: --";
+            document.getElementById("distLast").innerHTML = "Last distance: -- mm";
+            document.getElementById("distTs").innerHTML = "Timestamp: --";
+            document.getElementById("distSource").innerHTML = "Source: --";
+            document.getElementById("distRaw").innerHTML = "Raw pos(11/12/14/15): --";
+            document.getElementById("distStats").innerHTML = "Stats: count=0, min=--, max=--, mean=--, stddev=--";
+        }
+    }
+
     function changeSpeed(inputSpd) {
         speed_rate = inputSpd;
     }

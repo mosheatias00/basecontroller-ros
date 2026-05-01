@@ -1,18 +1,91 @@
 // --- --- --- Distance Measurement Handlers --- --- ---
 
+bool distanceRefreshArmPosition() {
+	if (moduleType != 1) {
+		return false;
+	}
+
+	bool ok_base = false;
+	bool ok_shoulder_drive = false;
+	bool ok_shoulder_driven = false;
+	bool ok_elbow = false;
+	bool ok_hand = false;
+	for (int retry = 0; retry < 5; retry++) {
+		ok_base = ok_base || getFeedback(BASE_SERVO_ID, true);
+		ok_shoulder_drive = ok_shoulder_drive || getFeedback(SHOULDER_DRIVING_SERVO_ID, true);
+		ok_shoulder_driven = ok_shoulder_driven || getFeedback(SHOULDER_DRIVEN_SERVO_ID, true);
+		ok_elbow = ok_elbow || getFeedback(ELBOW_SERVO_ID, true);
+		ok_hand = ok_hand || getFeedback(GRIPPER_SERVO_ID, true);
+		bool ok_shoulder = ok_shoulder_drive || ok_shoulder_driven;
+
+		// XYZ only depends on base/shoulder/elbow, so do not fail capture on gripper read.
+		bool ok_xyz = (ok_base && ok_shoulder && ok_elbow);
+		if (ok_xyz) {
+			break;
+		}
+		delay(12);
+	}
+
+	bool ok_shoulder = ok_shoulder_drive || ok_shoulder_driven;
+	bool ok_xyz = (ok_base && ok_shoulder && ok_elbow);
+	if (!ok_xyz) {
+		return false;
+	}
+
+	radB = calculateRadByFeedback(servoFeedback[BASE_SERVO_ID - 11].pos, BASE_JOINT);
+	if (ok_shoulder_drive) {
+		radS = calculateRadByFeedback(servoFeedback[SHOULDER_DRIVING_SERVO_ID - 11].pos, SHOULDER_JOINT);
+	} else {
+		// Shoulder driven servo rotates in the opposite direction, so invert the sign.
+		radS = -calculateRadByFeedback(servoFeedback[SHOULDER_DRIVEN_SERVO_ID - 11].pos, SHOULDER_JOINT);
+	}
+	radE = calculateRadByFeedback(servoFeedback[ELBOW_SERVO_ID - 11].pos, ELBOW_JOINT);
+	radG = calculateRadByFeedback(servoFeedback[GRIPPER_SERVO_ID - 11].pos, EOAT_JOINT);
+
+	RoArmM2_computePosbyJointRad(radB, radS, radE, radG);
+	if (EEMode == 0 && ok_hand) {
+		lastT = radG;
+	}
+
+	return true;
+}
+
 void distanceSetPointA() {
+	const char* capture_source = "input";
+	if (moduleType != 1 && !(jsonCmdReceive["x"].is<double>() && jsonCmdReceive["y"].is<double>() && jsonCmdReceive["z"].is<double>())) {
+		jsonInfoHttp.clear();
+		jsonInfoHttp["T"] = CMD_DISTANCE_SET_A;
+		jsonInfoHttp["ok"] = 0;
+		jsonInfoHttp["err"] = "No arm module. For base use T:149 then T:130";
+		return;
+	}
+
 	// Check if explicit x, y, z values are provided
 	if (jsonCmdReceive["x"].is<double>() && jsonCmdReceive["y"].is<double>() && jsonCmdReceive["z"].is<double>()) {
 		dist_point_a_x = jsonCmdReceive["x"].as<double>();
 		dist_point_a_y = jsonCmdReceive["y"].as<double>();
 		dist_point_a_z = jsonCmdReceive["z"].as<double>();
 	} else {
-		// Use current arm position
+		// Use fresh arm feedback position (avoid stale cached lastX/lastY/lastZ)
+		bool live_ok = distanceRefreshArmPosition();
 		dist_point_a_x = lastX;
 		dist_point_a_y = lastY;
 		dist_point_a_z = lastZ;
+		capture_source = live_ok ? "live" : "cached";
+		if (!live_ok && InfoPrint == 1) {
+			Serial.println("Distance A warning: servo feedback failed, using cached position.");
+		}
 	}
 	dist_point_a_set = true;
+
+	jsonInfoHttp.clear();
+	jsonInfoHttp["T"] = CMD_DISTANCE_SET_A;
+	jsonInfoHttp["ok"] = 1;
+	jsonInfoHttp["msg"] = "Point A set";
+	jsonInfoHttp["source"] = capture_source;
+	jsonInfoHttp["ax"] = dist_point_a_x;
+	jsonInfoHttp["ay"] = dist_point_a_y;
+	jsonInfoHttp["az"] = dist_point_a_z;
 	
 	if (InfoPrint == 1) {
 		Serial.printf("Point A set: x=%.2f, y=%.2f, z=%.2f\n", dist_point_a_x, dist_point_a_y, dist_point_a_z);
@@ -20,7 +93,20 @@ void distanceSetPointA() {
 }
 
 void distanceSetPointB() {
+	const char* capture_source = "input";
+	if (moduleType != 1 && !(jsonCmdReceive["x"].is<double>() && jsonCmdReceive["y"].is<double>() && jsonCmdReceive["z"].is<double>())) {
+		jsonInfoHttp.clear();
+		jsonInfoHttp["T"] = CMD_DISTANCE_SET_B;
+		jsonInfoHttp["ok"] = 0;
+		jsonInfoHttp["err"] = "No arm module. For base use T:149 then T:130";
+		return;
+	}
+
 	if (!dist_point_a_set) {
+		jsonInfoHttp.clear();
+		jsonInfoHttp["T"] = CMD_DISTANCE_SET_B;
+		jsonInfoHttp["ok"] = 0;
+		jsonInfoHttp["err"] = "Point A not set";
 		if (InfoPrint == 1) {
 			Serial.println("Error: Point A not set. Use CMD_DISTANCE_SET_A first.");
 		}
@@ -33,10 +119,15 @@ void distanceSetPointB() {
 		dist_point_b_y = jsonCmdReceive["y"].as<double>();
 		dist_point_b_z = jsonCmdReceive["z"].as<double>();
 	} else {
-		// Use current arm position
+		// Use fresh arm feedback position (avoid stale cached lastX/lastY/lastZ)
+		bool live_ok = distanceRefreshArmPosition();
 		dist_point_b_x = lastX;
 		dist_point_b_y = lastY;
 		dist_point_b_z = lastZ;
+		capture_source = live_ok ? "live" : "cached";
+		if (!live_ok && InfoPrint == 1) {
+			Serial.println("Distance B warning: servo feedback failed, using cached position.");
+		}
 	}
 	
 	// Calculate distance: sqrt((x2-x1)^2 + (y2-y1)^2 + (z2-z1)^2)
@@ -56,6 +147,28 @@ void distanceSetPointB() {
 	if (dist_last_measurement > dist_max) {
 		dist_max = dist_last_measurement;
 	}
+
+	double mean = dist_sum / dist_count;
+	double variance = (dist_sum_squares / dist_count) - (mean * mean);
+	double stddev = sqrt(variance > 0 ? variance : 0);
+
+	jsonInfoHttp.clear();
+	jsonInfoHttp["T"] = CMD_DISTANCE_SET_B;
+	jsonInfoHttp["ok"] = 1;
+	jsonInfoHttp["msg"] = "Distance computed";
+	jsonInfoHttp["source"] = capture_source;
+	jsonInfoHttp["ax"] = dist_point_a_x;
+	jsonInfoHttp["ay"] = dist_point_a_y;
+	jsonInfoHttp["az"] = dist_point_a_z;
+	jsonInfoHttp["bx"] = dist_point_b_x;
+	jsonInfoHttp["by"] = dist_point_b_y;
+	jsonInfoHttp["bz"] = dist_point_b_z;
+	jsonInfoHttp["d"] = dist_last_measurement;
+	jsonInfoHttp["count"] = dist_count;
+	jsonInfoHttp["min"] = dist_min;
+	jsonInfoHttp["max"] = dist_max;
+	jsonInfoHttp["mean"] = mean;
+	jsonInfoHttp["stddev"] = stddev;
 	
 	if (InfoPrint == 1) {
 		Serial.printf("Point B set: x=%.2f, y=%.2f, z=%.2f\n", dist_point_b_x, dist_point_b_y, dist_point_b_z);
@@ -72,6 +185,11 @@ void distanceReset() {
 	dist_sum = 0;
 	dist_sum_squares = 0;
 	dist_count = 0;
+
+	jsonInfoHttp.clear();
+	jsonInfoHttp["T"] = CMD_DISTANCE_RESET;
+	jsonInfoHttp["ok"] = 1;
+	jsonInfoHttp["msg"] = "Distance measurement reset";
 	
 	if (InfoPrint == 1) {
 		Serial.println("Distance measurement reset.");
@@ -79,18 +197,93 @@ void distanceReset() {
 }
 
 void distanceReport() {
-	if (dist_count == 0) {
+	if (moduleType != 1) {
+		jsonInfoHttp.clear();
+		jsonInfoHttp["T"] = CMD_DISTANCE_REPORT;
+		jsonInfoHttp["ok"] = 0;
+		jsonInfoHttp["err"] = "No arm module. For base use T:149 then T:130";
+		jsonInfoHttp["hint"] = "Read wheel odom fields: imux, imuy, imud";
+		return;
+	}
+
+	if (!dist_point_a_set) {
+		jsonInfoHttp.clear();
+		jsonInfoHttp["T"] = CMD_DISTANCE_REPORT;
+		jsonInfoHttp["ok"] = 0;
+		jsonInfoHttp["err"] = "Point A not set";
 		if (InfoPrint == 1) {
-			Serial.println("No measurements recorded.");
+			Serial.println("Error: Point A not set. Use CMD_DISTANCE_SET_A first.");
 		}
 		return;
+	}
+
+	bool live_ok = distanceRefreshArmPosition();
+	if (!live_ok) {
+		jsonInfoHttp.clear();
+		jsonInfoHttp["T"] = CMD_DISTANCE_REPORT;
+		jsonInfoHttp["ok"] = 0;
+		jsonInfoHttp["err"] = "Live servo feedback failed";
+		jsonInfoHttp["source"] = "no-live";
+		jsonInfoHttp["ts"] = millis();
+		jsonInfoHttp["base_ok"] = servoFeedback[BASE_SERVO_ID - 11].status ? 1 : 0;
+		jsonInfoHttp["shoulder_ok"] = servoFeedback[SHOULDER_DRIVING_SERVO_ID - 11].status ? 1 : 0;
+		jsonInfoHttp["elbow_ok"] = servoFeedback[ELBOW_SERVO_ID - 11].status ? 1 : 0;
+		jsonInfoHttp["hand_ok"] = servoFeedback[GRIPPER_SERVO_ID - 11].status ? 1 : 0;
+		if (InfoPrint == 1) {
+			Serial.println("Distance report error: live servo feedback failed.");
+		}
+		return;
+	}
+
+	dist_point_b_x = lastX;
+	dist_point_b_y = lastY;
+	dist_point_b_z = lastZ;
+
+	// Compute latest A->current distance on each report request.
+	double dx = dist_point_b_x - dist_point_a_x;
+	double dy = dist_point_b_y - dist_point_a_y;
+	double dz = dist_point_b_z - dist_point_a_z;
+	dist_last_measurement = sqrt(dx*dx + dy*dy + dz*dz);
+
+	// Update rolling statistics from report-triggered measurements.
+	dist_count++;
+	dist_sum += dist_last_measurement;
+	dist_sum_squares += dist_last_measurement * dist_last_measurement;
+	if (dist_last_measurement < dist_min) {
+		dist_min = dist_last_measurement;
+	}
+	if (dist_last_measurement > dist_max) {
+		dist_max = dist_last_measurement;
 	}
 	
 	double mean = dist_sum / dist_count;
 	double variance = (dist_sum_squares / dist_count) - (mean * mean);
 	double stddev = sqrt(variance > 0 ? variance : 0);
+
+	jsonInfoHttp.clear();
+	jsonInfoHttp["T"] = CMD_DISTANCE_REPORT;
+	jsonInfoHttp["ok"] = 1;
+	jsonInfoHttp["msg"] = "Distance from A to current";
+	jsonInfoHttp["source"] = live_ok ? "live" : "cached";
+	jsonInfoHttp["ts"] = millis();
+	jsonInfoHttp["pos11"] = servoFeedback[BASE_SERVO_ID - 11].pos;
+	jsonInfoHttp["pos12"] = servoFeedback[SHOULDER_DRIVING_SERVO_ID - 11].pos;
+	jsonInfoHttp["pos14"] = servoFeedback[ELBOW_SERVO_ID - 11].pos;
+	jsonInfoHttp["pos15"] = servoFeedback[GRIPPER_SERVO_ID - 11].pos;
+	jsonInfoHttp["ax"] = dist_point_a_x;
+	jsonInfoHttp["ay"] = dist_point_a_y;
+	jsonInfoHttp["az"] = dist_point_a_z;
+	jsonInfoHttp["bx"] = dist_point_b_x;
+	jsonInfoHttp["by"] = dist_point_b_y;
+	jsonInfoHttp["bz"] = dist_point_b_z;
+	jsonInfoHttp["d"] = dist_last_measurement;
+	jsonInfoHttp["count"] = dist_count;
+	jsonInfoHttp["min"] = dist_min;
+	jsonInfoHttp["max"] = dist_max;
+	jsonInfoHttp["mean"] = mean;
+	jsonInfoHttp["stddev"] = stddev;
 	
-	Serial.println("\n=== Distance Measurement Statistics ===");
+	Serial.println("\n=== Distance Measurement (A -> Current) ===");
 	Serial.printf("Total Measurements: %d\n", dist_count);
 	Serial.printf("Latest Distance:   %.2f mm\n", dist_last_measurement);
 	Serial.printf("Minimum Distance:  %.2f mm\n", dist_min);
@@ -98,8 +291,97 @@ void distanceReport() {
 	Serial.printf("Mean Distance:     %.2f mm\n", mean);
 	Serial.printf("Std Deviation:     %.2f mm\n", stddev);
 	Serial.printf("Point A: (%.2f, %.2f, %.2f)\n", dist_point_a_x, dist_point_a_y, dist_point_a_z);
-	Serial.printf("Point B: (%.2f, %.2f, %.2f)\n", dist_point_b_x, dist_point_b_y, dist_point_b_z);
+	Serial.printf("Current: (%.2f, %.2f, %.2f)\n", dist_point_b_x, dist_point_b_y, dist_point_b_z);
 	Serial.println("====================================\n");
+}
+
+void baseDriveSetAnchor() {
+	setDriveAnchorToCurrent();
+
+	jsonInfoHttp.clear();
+	jsonInfoHttp["T"] = CMD_BASE_SET_ANCHOR;
+	jsonInfoHttp["ok"] = 1;
+	jsonInfoHttp["msg"] = "Anchor set";
+	jsonInfoHttp["anchor_x"] = drive_anchor_x;
+	jsonInfoHttp["anchor_y"] = drive_anchor_y;
+}
+
+void baseDriveAbort() {
+	stopDrivePlan();
+
+	jsonInfoHttp.clear();
+	jsonInfoHttp["T"] = CMD_BASE_DRIVE_ABORT;
+	jsonInfoHttp["ok"] = 1;
+	jsonInfoHttp["msg"] = "Drive plan aborted";
+}
+
+void baseDrivePlanStart() {
+	jsonInfoHttp.clear();
+	jsonInfoHttp["T"] = CMD_BASE_DRIVE_PLAN;
+
+	if (!jsonCmdReceive["legs"].is<JsonArrayConst>()) {
+		jsonInfoHttp["ok"] = 0;
+		jsonInfoHttp["err"] = "legs must be an array";
+		return;
+	}
+
+	JsonArrayConst legs = jsonCmdReceive["legs"].as<JsonArrayConst>();
+	if (legs.size() == 0 || legs.size() > DRIVE_PLAN_MAX_LEGS) {
+		jsonInfoHttp["ok"] = 0;
+		jsonInfoHttp["err"] = "legs count out of range";
+		jsonInfoHttp["max"] = DRIVE_PLAN_MAX_LEGS;
+		return;
+	}
+
+	double yawDeg[DRIVE_PLAN_MAX_LEGS];
+	double distM[DRIVE_PLAN_MAX_LEGS];
+	uint8_t legCount = 0;
+	double carryYawDeg = icm_yaw * 57.29577951308232;
+
+	for (JsonVariantConst legVar : legs) {
+		if (!legVar.is<JsonObjectConst>()) {
+			jsonInfoHttp["ok"] = 0;
+			jsonInfoHttp["err"] = "each leg must be object";
+			return;
+		}
+
+		JsonObjectConst legObj = legVar.as<JsonObjectConst>();
+		bool has_yaw = legObj["yaw"].is<float>() || legObj["yaw"].is<int>();
+		if (has_yaw) {
+			carryYawDeg = legObj["yaw"].as<double>();
+		}
+
+		bool has_dist = legObj["dist"].is<float>() || legObj["dist"].is<int>();
+		bool has_d = legObj["d"].is<float>() || legObj["d"].is<int>();
+		if (!has_dist && !has_d) {
+			jsonInfoHttp["ok"] = 0;
+			jsonInfoHttp["err"] = "each leg needs dist or d";
+			return;
+		}
+
+		yawDeg[legCount] = carryYawDeg;
+		distM[legCount] = has_dist ? legObj["dist"].as<double>() : legObj["d"].as<double>();
+		legCount++;
+	}
+
+	bool resetAnchor = true;
+	if (jsonCmdReceive["anchor"].is<bool>()) {
+		resetAnchor = jsonCmdReceive["anchor"].as<bool>();
+	} else if (jsonCmdReceive["anchor"].is<int>()) {
+		resetAnchor = (jsonCmdReceive["anchor"].as<int>() != 0);
+	}
+
+	if (!startDrivePlan(legCount, yawDeg, distM, resetAnchor)) {
+		jsonInfoHttp["ok"] = 0;
+		jsonInfoHttp["err"] = "failed to start plan";
+		return;
+	}
+
+	jsonInfoHttp["ok"] = 1;
+	jsonInfoHttp["msg"] = "Drive plan started";
+	jsonInfoHttp["legs"] = legCount;
+	jsonInfoHttp["anchor_reset"] = resetAnchor ? 1 : 0;
+	jsonInfoHttp["target_m"] = drive_plan_total_target_dist;
 }
 
 void jsonCmdReceiveHandler(){
@@ -107,25 +389,29 @@ void jsonCmdReceiveHandler(){
 	switch(cmdType){
 	// emergency stop.
 	case CMD_EMERGENCY_STOP:
+														stopDrivePlan();
 												emergencyStopProcessing();
   											setGoalSpeed(0, 0);
 												break;
 	case CMD_SPEED_CTRL:	if (jsonCmdReceive["T"].is<int>() &&
 														(jsonCmdReceive["L"].is<float>() || jsonCmdReceive["L"].is<int>()) &&
 														(jsonCmdReceive["R"].is<float>() || jsonCmdReceive["R"].is<int>())){
+														stopDrivePlan();
 														heartbeatStopFlag = false;
 														lastCmdRecvTime = millis();
 														setGoalSpeed(
 														jsonCmdReceive["L"],
 														jsonCmdReceive["R"]);
 												} break;
-	case CMD_PWM_INPUT:		usePIDCompute = false;
+	case CMD_PWM_INPUT:		stopDrivePlan();
+														usePIDCompute = false;
 												heartbeatStopFlag = false;
 												lastCmdRecvTime = millis();
 												leftCtrl(jsonCmdReceive["L"]);
 												rightCtrl(jsonCmdReceive["R"]);
 												break;
-	case CMD_ROS_CTRL:		rosCtrl(
+	case CMD_ROS_CTRL:		stopDrivePlan();
+														rosCtrl(
 												jsonCmdReceive["X"],
 												jsonCmdReceive["Z"]);break;
 	case CMD_SET_MOTOR_PID:
@@ -172,6 +458,14 @@ void jsonCmdReceiveHandler(){
 	case CMD_UART_ECHO_MODE:
 												setCmdEcho(
 												jsonCmdReceive["cmd"]);break;
+	case CMD_ODOM_RESET:
+														resetWheelOdom();break;
+	case CMD_BASE_DRIVE_PLAN:
+														baseDrivePlanStart();break;
+	case CMD_BASE_SET_ANCHOR:
+														baseDriveSetAnchor();break;
+	case CMD_BASE_DRIVE_ABORT:
+														baseDriveAbort();break;
 	case CMD_ARM_CTRL_UI: RoArmM2_uiCtrl(
 												jsonCmdReceive["E"],
 												jsonCmdReceive["Z"],

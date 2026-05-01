@@ -405,8 +405,34 @@ double qc1 = 0.0;
 double qc2 = 0.0;
 double qc3 = 0.0;
 
-float max_ax = 0;
-float min_ax = 0;
+
+
+double motor_loop_hz = 0;
+
+// Wheel-based planar odometry (meters, m/s), heading from IMU yaw.
+double wheel_odom_x = 0;
+double wheel_odom_y = 0;
+double wheel_odom_dist = 0;
+double wheel_odom_path = 0;
+double wheel_odom_v = 0;
+double wheel_odom_last_l = 0;
+double wheel_odom_last_r = 0;
+
+#define DRIVE_PLAN_MAX_LEGS 16
+
+bool drive_plan_active = false;
+bool drive_plan_turn_phase = false;
+uint8_t drive_plan_leg_count = 0;
+uint8_t drive_plan_leg_index = 0;
+double drive_plan_leg_yaw[DRIVE_PLAN_MAX_LEGS] = {0};
+double drive_plan_leg_dist[DRIVE_PLAN_MAX_LEGS] = {0};
+double drive_plan_leg_start_path = 0;
+double drive_plan_total_target_dist = 0;
+double drive_plan_completed_dist = 0;
+
+double drive_anchor_x = 0;
+double drive_anchor_y = 0;
+double drive_anchor_path = 0;
 
 // int32_t biasGyroX, biasGyroY, biasGyroZ;
 // int32_t biasAccelX, biasAccelY, biasAccelZ;

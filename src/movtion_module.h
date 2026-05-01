@@ -144,6 +144,159 @@ void initEncoders() {
   encoderB.setCount(0);
 }
 
+void setGoalSpeed(float inputLeft, float inputRight);
+
+void resetWheelOdom() {
+  wheel_odom_x = 0;
+  wheel_odom_y = 0;
+  wheel_odom_dist = 0;
+  wheel_odom_path = 0;
+  wheel_odom_v = 0;
+  wheel_odom_last_l = en_odom_l;
+  wheel_odom_last_r = en_odom_r;
+}
+
+static double wrapAnglePi(double angle) {
+  while (angle > PI) {
+    angle -= 2.0 * PI;
+  }
+  while (angle < -PI) {
+    angle += 2.0 * PI;
+  }
+  return angle;
+}
+
+void setDriveAnchorToCurrent() {
+  drive_anchor_x = wheel_odom_x;
+  drive_anchor_y = wheel_odom_y;
+  drive_anchor_path = wheel_odom_path;
+}
+
+void stopDrivePlan() {
+  drive_plan_active = false;
+  drive_plan_turn_phase = false;
+  drive_plan_leg_count = 0;
+  drive_plan_leg_index = 0;
+  drive_plan_leg_start_path = wheel_odom_path;
+  drive_plan_total_target_dist = 0;
+  drive_plan_completed_dist = 0;
+  setGoalSpeed(0, 0);
+}
+
+bool startDrivePlan(uint8_t legCount, const double* yawDeg, const double* distM, bool resetAnchor) {
+  if (legCount == 0 || legCount > DRIVE_PLAN_MAX_LEGS) {
+    return false;
+  }
+
+  if (resetAnchor) {
+    setDriveAnchorToCurrent();
+  }
+
+  drive_plan_leg_count = legCount;
+  drive_plan_leg_index = 0;
+  drive_plan_turn_phase = true;
+  drive_plan_active = true;
+  drive_plan_leg_start_path = wheel_odom_path;
+  drive_plan_total_target_dist = 0;
+  drive_plan_completed_dist = 0;
+
+  for (uint8_t i = 0; i < legCount; i++) {
+    drive_plan_leg_yaw[i] = yawDeg[i] * DEG_TO_RAD;
+    drive_plan_leg_dist[i] = distM[i];
+    drive_plan_total_target_dist += fabs(distM[i]);
+  }
+
+  heartbeatStopFlag = false;
+  lastCmdRecvTime = millis();
+  return true;
+}
+
+void updateDrivePlanController() {
+  if (!drive_plan_active) {
+    return;
+  }
+
+  if (drive_plan_leg_index >= drive_plan_leg_count) {
+    stopDrivePlan();
+    return;
+  }
+
+  heartbeatStopFlag = false;
+  lastCmdRecvTime = millis();
+
+  const uint8_t legIdx = drive_plan_leg_index;
+  const double targetYaw = drive_plan_leg_yaw[legIdx];
+  const double targetDist = fabs(drive_plan_leg_dist[legIdx]);
+  const double currLegDist = fabs(wheel_odom_path - drive_plan_leg_start_path);
+  const double yawErr = wrapAnglePi(targetYaw - icm_yaw);
+
+  const double turnTolRad = 4.0 * DEG_TO_RAD;
+  const double distTolM = 0.02;
+  const double turnKp = 1.1;
+  const double holdKp = 0.9;
+  const double maxTurnSpeed = 0.38;
+  const double cruiseSpeed = 0.30;
+  const double minCruiseSpeed = 0.12;
+  const double maxHoldCorr = 0.18;
+
+  if (drive_plan_turn_phase) {
+    if (fabs(yawErr) <= turnTolRad) {
+      drive_plan_turn_phase = false;
+      drive_plan_leg_start_path = wheel_odom_path;
+      setGoalSpeed(0, 0);
+      return;
+    }
+
+    double turnSpeed = constrain(turnKp * yawErr, -maxTurnSpeed, maxTurnSpeed);
+    setGoalSpeed(-turnSpeed, turnSpeed);
+    return;
+  }
+
+  if (currLegDist + distTolM >= targetDist) {
+    drive_plan_completed_dist += targetDist;
+    drive_plan_leg_index++;
+    drive_plan_turn_phase = true;
+    setGoalSpeed(0, 0);
+    if (drive_plan_leg_index >= drive_plan_leg_count) {
+      drive_plan_active = false;
+      setGoalSpeed(0, 0);
+    }
+    return;
+  }
+
+  double remain = targetDist - currLegDist;
+  double linearSpeed = cruiseSpeed;
+  if (remain < 0.25) {
+    linearSpeed = minCruiseSpeed + ((cruiseSpeed - minCruiseSpeed) * (remain / 0.25));
+  }
+  linearSpeed = constrain(linearSpeed, minCruiseSpeed, cruiseSpeed);
+  if (drive_plan_leg_dist[legIdx] < 0) {
+    linearSpeed = -linearSpeed;
+  }
+
+  double yawCorr = constrain(holdKp * yawErr, -maxHoldCorr, maxHoldCorr);
+  double leftCmd = constrain(linearSpeed - yawCorr, -0.8, 0.8);
+  double rightCmd = constrain(linearSpeed + yawCorr, -0.8, 0.8);
+  setGoalSpeed(leftCmd, rightCmd);
+}
+
+void updateWheelOdom() {
+  const double dl = en_odom_l - wheel_odom_last_l;
+  const double dr = en_odom_r - wheel_odom_last_r;
+  wheel_odom_last_l = en_odom_l;
+  wheel_odom_last_r = en_odom_r;
+
+  const double dc = 0.5 * (dl + dr);
+  wheel_odom_path += fabs(dc);
+
+  const double heading = icm_yaw;
+  wheel_odom_x += dc * cos(heading);
+  wheel_odom_y += dc * sin(heading);
+  wheel_odom_dist = sqrt((wheel_odom_x * wheel_odom_x) + (wheel_odom_y * wheel_odom_y));
+
+  wheel_odom_v = 0.5 * (speedGetA + speedGetB);
+}
+
 void getLeftSpeed() {
   unsigned long currentTime = micros();
   long encoderPulsesA = encoderA.getCount();

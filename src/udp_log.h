@@ -42,13 +42,19 @@ public:
     }
 
     size_t write(uint8_t value) override {
-        size_t written = SerialNative.write(value);
+        size_t written = 0;
+        if (SerialNative) {
+            written = SerialNative.write(value);
+        }
         mirrorBytes(&value, 1);
         return written;
     }
 
     size_t write(const uint8_t* buffer, size_t size) override {
-        size_t written = SerialNative.write(buffer, size);
+        size_t written = 0;
+        if (SerialNative) {
+            written = SerialNative.write(buffer, size);
+        }
         mirrorBytes(buffer, size);
         return written;
     }

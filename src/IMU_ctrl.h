@@ -1,20 +1,13 @@
 #define AD0_VAL 0
 ICM_20948_I2C myICM;
 
-// SimpleKalmanFilter  kf_ax(kf_accel_q, kf_accel_r, kf_accel_p);
-// SimpleKalmanFilter  kf_ay(kf_accel_q, kf_accel_r, kf_accel_p);
-// SimpleKalmanFilter  kf_az(kf_accel_q, kf_accel_r, kf_accel_p);
-
-// SimpleKalmanFilter  kf_gx(kf_accel_q, kf_accel_r, kf_accel_p);
-// SimpleKalmanFilter  kf_gy(kf_accel_q, kf_accel_r, kf_accel_p);
-// SimpleKalmanFilter  kf_gz(kf_accel_q, kf_accel_r, kf_accel_p);
-
 void imu_init() {
 }
 
 
 void updateIMUData() {
 }
+
 
 // {"T":127}
 // reset qc0 ~ q3
@@ -34,14 +27,14 @@ void imuCalibration() {
     }
 
     myICM.setBiasGyroX(-store.biasGyroX);
-    myICM.setBiasGyroX(-store.biasGyroY);
-    myICM.setBiasGyroX(-store.biasGyroZ);
+    myICM.setBiasGyroY(-store.biasGyroY);
+    myICM.setBiasGyroZ(-store.biasGyroZ);
     myICM.setBiasAccelX(-store.biasAccelX);
-    myICM.setBiasAccelX(-store.biasAccelY);
-    myICM.setBiasAccelX(-store.biasAccelZ);
+    myICM.setBiasAccelY(-store.biasAccelY);
+    myICM.setBiasAccelZ(-store.biasAccelZ);
     myICM.setBiasCPassX(-store.biasCPassX);
-    myICM.setBiasCPassX(-store.biasCPassY);
-    myICM.setBiasCPassX(-store.biasCPassZ);
+    myICM.setBiasCPassY(-store.biasCPassY);
+    myICM.setBiasCPassZ(-store.biasCPassZ);
 
     jsonInfoHttp.clear();
     jsonInfoHttp["T"] = FEEDBACK_IMU_OFFSET;
@@ -138,6 +131,13 @@ void getIMUData() {
   jsonInfoHttp["q2"] = q2;
   jsonInfoHttp["q3"] = q3;
 
+  // Keep legacy keys but source them from wheel odometry.
+  jsonInfoHttp["ix"] = wheel_odom_x;
+  jsonInfoHttp["iy"] = wheel_odom_y;
+  jsonInfoHttp["id"] = wheel_odom_dist;
+  jsonInfoHttp["ivx"] = wheel_odom_v;
+  jsonInfoHttp["ivy"] = 0;
+
 	String getInfoJsonString;
 	serializeJson(jsonInfoHttp, getInfoJsonString);
 	Serial.println(getInfoJsonString);
@@ -225,14 +225,14 @@ void setIMUOffset(int32_t inGX, int32_t inGY, int32_t inGZ, int32_t inAX, int32_
   store.biasCPassZ = inCZ;
 
   myICM.setBiasGyroX(store.biasGyroX);
-  myICM.setBiasGyroX(store.biasGyroY);
-  myICM.setBiasGyroX(store.biasGyroZ);
+  myICM.setBiasGyroY(store.biasGyroY);
+  myICM.setBiasGyroZ(store.biasGyroZ);
   myICM.setBiasAccelX(store.biasAccelX);
-  myICM.setBiasAccelX(store.biasAccelY);
-  myICM.setBiasAccelX(store.biasAccelZ);
+  myICM.setBiasAccelY(store.biasAccelY);
+  myICM.setBiasAccelZ(store.biasAccelZ);
   myICM.setBiasCPassX(store.biasCPassX);
-  myICM.setBiasCPassX(store.biasCPassY);
-  myICM.setBiasCPassX(store.biasCPassZ);
+  myICM.setBiasCPassY(store.biasCPassY);
+  myICM.setBiasCPassZ(store.biasCPassZ);
 
   jsonInfoHttp.clear();
   jsonInfoHttp["T"] = FEEDBACK_IMU_OFFSET;

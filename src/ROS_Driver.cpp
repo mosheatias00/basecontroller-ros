@@ -292,6 +292,7 @@ void setup() {
   updateOledWifiInfo();
 
   initEncoders();
+  resetWheelOdom();
 
   pidControllerInit();
 
@@ -309,6 +310,8 @@ void setup() {
 void loop() {
   icm_20948_DMP_data_t data;
   myICM.readDMPdataFromFIFO(&data);
+  bool has_quat9 = false;
+  bool has_accel = false;
 
   if ((myICM.status == ICM_20948_Stat_Ok) || (myICM.status == ICM_20948_Stat_FIFOMoreDataAvail)) {
     if ((data.header & DMP_header_bitmap_Quat9) > 0) {
@@ -340,12 +343,14 @@ void loop() {
       t3 = +2.0 * (q0 * q3 + q1 * q2);
       t4 = +1.0 - 2.0 * (q2sqr + q3 * q3);
       icm_yaw = atan2(t3, t4);
+      has_quat9 = true;
     }
 
     if ((data.header & DMP_header_bitmap_Accel) > 0) {
       ax = data.Raw_Accel.Data.X;
       ay = data.Raw_Accel.Data.Y;
       az = data.Raw_Accel.Data.Z;
+      has_accel = true;
     }
     if ((data.header & DMP_header_bitmap_Gyro) > 0) {
       gx = data.Raw_Gyro.Data.X;
@@ -357,6 +362,10 @@ void loop() {
       my = data.Compass.Data.Y;
       mz = data.Compass.Data.Z;
     }
+
+    // IMU is used for orientation only in base mode.
+    (void)has_quat9;
+    (void)has_accel;
   }
 
   serialCtrl();
@@ -381,8 +390,21 @@ void loop() {
   LeftPidControllerCompute();
   
   getRightSpeed();
+  updateWheelOdom();
+  updateDrivePlanController();
   
   RightPidControllerCompute();
+
+  // Measure motor loop frequency
+  static unsigned long loop_hz_last_us = 0;
+  static uint32_t loop_hz_count = 0;
+  loop_hz_count++;
+  unsigned long now_us = micros();
+  if (now_us - loop_hz_last_us >= 1000000UL) {
+    motor_loop_hz = (double)loop_hz_count * 1e6 / (double)(now_us - loop_hz_last_us);
+    loop_hz_count = 0;
+    loop_hz_last_us = now_us;
+  }
   
   oledInfoUpdate();
 
