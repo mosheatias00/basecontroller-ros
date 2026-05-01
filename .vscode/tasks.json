@@ -5,7 +5,7 @@
       "label": "pio: build",
       "type": "shell",
       "command": "./.venv/bin/platformio",
-      "args": ["run"],
+      "args": ["run", "-e", "esp32dev-ota"],
       "options": {
         "cwd": "${workspaceFolder}"
       },
@@ -19,7 +19,7 @@
       "label": "pio: upload",
       "type": "shell",
       "command": "./.venv/bin/platformio",
-      "args": ["run", "-t", "upload"],
+      "args": ["run", "-e", "esp32dev-ota", "-t", "upload"],
       "options": {
         "cwd": "${workspaceFolder}"
       },

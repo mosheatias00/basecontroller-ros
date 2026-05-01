@@ -606,24 +606,6 @@ const char index_html[] PROGMEM = R"rawliteral(
                 </div>
             </div>
         </section>
-        <section>
-            <div>
-                <h2 class="h2-tt" id="logsTitle">Live Logs</h2>
-            </div>
-            <div class="fb-info">
-                <span style="color: rgba(150, 200, 150, 0.9); font-family: monospace; font-size: 12px;">
-                    <strong>UDP Log Streaming:</strong><br><br>
-                    Port: <strong>14514</strong><br>
-                    Protocol: UDP Broadcast<br><br>
-                    Browser JavaScript cannot directly listen to UDP sockets.<br>
-                    Use an external listener to view real-time serial output:<br>
-                    • macOS: <code>python3 udp_listener.py</code> (recommended)<br>
-                    • Linux: <code>nc -kul 14514</code><br>
-                    • Windows: <code>ncat -ul 14514</code><br><br>
-                    All Serial.print() output is mirrored to UDP in parallel.
-                </span>
-            </div>
-        </section>
     </main>
 <script>
     var cmdA;
