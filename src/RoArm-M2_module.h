@@ -5,6 +5,7 @@ SMS_STS st;
 
 // place holder.
 void serialCtrl();
+int RoArmM2_baseJointCtrlRad(byte returnType, double radInput, u16 speedInput, u8 accInput);
 
 // Used to store the feedback information from the servo.
 struct ServoFeedback {
@@ -42,7 +43,7 @@ double calculateRadByFeedback(int inputSteps, int jointName) {
   double getRad;
   switch(jointName){
   case BASE_JOINT:
-    getRad = -(inputSteps * 2 * M_PI / ARM_SERVO_POS_RANGE) + M_PI;
+    getRad = -(inputSteps * 2 * M_PI / ARM_SERVO_POS_RANGE) + M_PI - BASE_JOINT_MECHANICAL_BIAS_RAD;
     break;
   case SHOULDER_JOINT:
     getRad = (inputSteps * 2 * M_PI / ARM_SERVO_POS_RANGE) - M_PI;
@@ -216,7 +217,7 @@ void RoArmM2_moveInit() {
 
   // move BASE_SERVO to middle position.
   if(InfoPrint == 1){Serial.println("Moving BASE_JOINT to initPos.");}
-  st.WritePosEx(BASE_SERVO_ID, ARM_SERVO_MIDDLE_POS, ARM_SERVO_INIT_SPEED, ARM_SERVO_INIT_ACC);
+  RoArmM2_baseJointCtrlRad(1, 0, ARM_SERVO_INIT_SPEED, ARM_SERVO_INIT_ACC);
 
   // release SHOULDER_DRIVEN_SERVO torque.
   if(InfoPrint == 1){Serial.println("Unlock the torque of SHOULDER_DRIVEN_SERVO.");}
@@ -265,7 +266,7 @@ void RoArmM2_moveInit() {
 // the accInput(u8) is the acceleration of the servo movement.
 // radInput increase, move to left.
 int RoArmM2_baseJointCtrlRad(byte returnType, double radInput, u16 speedInput, u8 accInput) {
-  radInput = -constrain(radInput, -M_PI, M_PI);
+  radInput = -constrain(radInput + BASE_JOINT_MECHANICAL_BIAS_RAD, -M_PI, M_PI);
   s16 computePos = calculatePosByRad(radInput) + ARM_SERVO_MIDDLE_POS;
   goalPos[0] = computePos;
 

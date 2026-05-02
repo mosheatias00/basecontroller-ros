@@ -24,7 +24,7 @@ float mapFloat(float value, float fromLow, float fromHigh, float toLow, float to
 }
 
 void gimbalCtrlSimple(float Xinput, float Yinput, float spdInput, float accInput) {
-  Xinput = constrainFloat(Xinput, -180, 180);
+  Xinput = constrainFloat(Xinput + GIMBAL_PAN_BIAS_DEG, -180, 180);
   Yinput = constrainFloat(Yinput, -30, 90);
 
   gimbalPos[0] = 2047 + (int)round(map(Xinput, 0, 360, 0, 4095));
@@ -40,7 +40,7 @@ void gimbalCtrlSimple(float Xinput, float Yinput, float spdInput, float accInput
 }
 
 void gimbalCtrlMove(float Xinput, float Yinput, float spdInputX, float spdInputY) {
-  Xinput = constrainFloat(Xinput, -180, 180);
+  Xinput = constrainFloat(Xinput + GIMBAL_PAN_BIAS_DEG, -180, 180);
   Yinput = constrainFloat(Yinput, -30, 90);
 
   spdInputX = constrain(spdInputX, 1, 2500);

@@ -134,3 +134,25 @@ Compatibility mapping retained in IMU feedback:
 - `src/ugv_config.h`
 - `src/web_page.h`
 - `src/eval/main.cpp` (new)
+
+## 10) Gimbal / Camera Pedestal Alignment
+
+### Module type
+- `moduleType` is now set to `2` (Gimbal) by default in `ugv_config.h`.
+- On boot the system correctly identifies itself as a Gimbal module and homes the camera to center.
+
+### Boot homing
+- `gimbalCtrlSimple(0, 0, 500, 20)` is called during `setup()` when `moduleType == 2`.
+- The camera pan servo moves to its calibrated center position on every reset.
+
+### Mechanical pan bias
+- `GIMBAL_PAN_BIAS_DEG` constant in `ugv_config.h` compensates for physical misalignment of the camera pedestal.
+- The bias is added to `Xinput` in both `gimbalCtrlSimple` and `gimbalCtrlMove`, so all pan commands are offset automatically.
+- Current value: `-4.0°` (shifts pan left to reach true forward).
+- To re-tune: adjust `GIMBAL_PAN_BIAS_DEG` in `ugv_config.h` — positive shifts right, negative shifts left.
+
+### Files changed
+- `src/ugv_config.h` — `moduleType = 2`, `GIMBAL_PAN_BIAS_DEG = -4.0f`
+- `src/gimbal_module.h` — bias applied in `gimbalCtrlSimple` and `gimbalCtrlMove`
+- `src/ROS_Driver.cpp` — gimbal homed to center on boot when `moduleType == 2`
+- `src/RoArm-M2_module.h` — forward declaration added; `RoArmM2_moveInit` now guarded to `moduleType == 1`

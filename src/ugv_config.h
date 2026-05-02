@@ -40,7 +40,7 @@ byte mainType = 2;
 // 0: [Base default] without RoArm-M2 and gimbal.
 // 1: [RoArm default] RoArm-M2 mounted on the UGV.
 // 2: [Gimbal default] Gimbal mounted on the UGV.
-byte moduleType = 0;
+byte moduleType = 2;
 
 // false: gimbal steady mode off.
 //  true: gimbal steady mode on.
@@ -81,6 +81,9 @@ String thisMacStr;
 #define ARM_SERVO_ANGLE_RANGE  360
 #define ARM_SERVO_INIT_SPEED   600
 #define ARM_SERVO_INIT_ACC      20
+
+const double BASE_JOINT_MECHANICAL_BIAS_RAD = 0.0;  // arm base joint bias (degrees->rad), not used
+const float  GIMBAL_PAN_BIAS_DEG = 4.0f;            // mechanical pan bias: positive shifts pan right
 
 #define ARM_L1_LENGTH_MM    126.06
 #define ARM_L2_LENGTH_MM_A  236.82

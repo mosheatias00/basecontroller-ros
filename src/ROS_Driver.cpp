@@ -245,8 +245,13 @@ void setup() {
   }
   screenLine_3 = ">>> Moving to init pos...";
   oled_update();
-  RoArmM2_resetPID();
-  RoArmM2_moveInit();
+  if (moduleType == 2) {
+    // Home the gimbal (camera pedestal) to center on boot.
+    gimbalCtrlSimple(0, 0, 500, 20);
+  } else if (moduleType == 1) {
+    RoArmM2_resetPID();
+    RoArmM2_moveInit();
+  }
 
   screenLine_3 = "Reset joint torque to ST_TORQUE_MAX";
   oled_update();
