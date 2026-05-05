@@ -127,6 +127,11 @@
 // {"T":130}
 #define CMD_BASE_FEEDBACK 	130
 
+// Save IMU installation heading bias explicitly.
+// Procedure: wait startup IMU runtime calibration (valid=true), point robot north, then send:
+// {"T":153}
+#define CMD_SET_IMU_INSTALL_BIAS 153
+
 // off: {"T":131,"cmd":0}
 // 	on: {"T":131,"cmd":1} [default]
 #define CMD_BASE_FEEDBACK_FLOW   131

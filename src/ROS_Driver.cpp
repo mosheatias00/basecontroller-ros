@@ -286,7 +286,8 @@ void setup() {
   screenLine_3 = "IMU Calibrating";
   oled_update();
   if(InfoPrint == 1){Serial.println("IMU Calibrating");}
-  imuCalibration();
+  startIMURuntimeCalibration();
+  loadIMUCalibration();
 
   screenLine_3 = "UGV started";
   oled_update();
@@ -331,23 +332,49 @@ void loop() {
       }
       q0 = sqrt(q0_sq);
 
-      q2sqr = q2 * q2;
+      // Track DMP compass accuracy (0=unreliable, 3=fully converged).
+      imu_dmp_accuracy = data.Quat9.Data.Accuracy;
 
-      // roll (x-axis rotation)
-      t0 = +2.0 * (q0 * q1 + q2 * q3);
-      t1 = +1.0 - 2.0 * (q1 * q1 + q2sqr);
-      icm_roll = atan2(t0, t1);
+      // Skip Euler update on accuracy=0 packets (magnetometer recalibration glitch).
+      if (imu_dmp_accuracy >= 1) {
+        q2sqr = q2 * q2;
 
-      // pitch (y-axis rotation)
-      t2 = +2.0 * (q0 * q2 - q3 * q1);
-      t2 = t2 > 1.0 ? 1.0 : t2;
-      t2 = t2 < -1.0 ? -1.0 : t2;
-      icm_pitch = asin(t2);
+        // roll (x-axis rotation)
+        t0 = +2.0 * (q0 * q1 + q2 * q3);
+        t1 = +1.0 - 2.0 * (q1 * q1 + q2sqr);
+        icm_roll = atan2(t0, t1);
 
-      // yaw (z-axis rotation)
-      t3 = +2.0 * (q0 * q3 + q1 * q2);
-      t4 = +1.0 - 2.0 * (q2sqr + q3 * q3);
-      icm_yaw = atan2(t3, t4);
+        // pitch (y-axis rotation)
+        t2 = +2.0 * (q0 * q2 - q3 * q1);
+        t2 = t2 > 1.0 ? 1.0 : t2;
+        t2 = t2 < -1.0 ? -1.0 : t2;
+        icm_pitch = asin(t2);
+
+        // yaw (z-axis rotation)
+        t3 = +2.0 * (q0 * q3 + q1 * q2);
+        t4 = +1.0 - 2.0 * (q2sqr + q3 * q3);
+        icm_yaw = atan2(t3, t4);
+      }
+
+      // Mark valid only once acc==3 AND yaw has been numerically stable for ~2s.
+      if (!imu_heading_valid) {
+        if (imu_dmp_accuracy >= 3) {
+          double diff = fabs(icm_yaw - imu_yaw_prev_stable);
+          // Handle wrap-around near ±PI
+          if (diff > PI) diff = TWO_PI - diff;
+          if (diff < IMU_STABLE_THRESHOLD_RAD) {
+            if (++imu_stable_count >= IMU_STABLE_REQUIRED_COUNT) {
+              imu_heading_valid = true;
+            }
+          } else {
+            imu_stable_count = 0;
+          }
+          imu_yaw_prev_stable = icm_yaw;
+        } else {
+          imu_stable_count = 0;
+          imu_yaw_prev_stable = icm_yaw;
+        }
+      }
       has_quat9 = true;
     }
 

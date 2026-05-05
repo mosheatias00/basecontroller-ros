@@ -390,7 +390,10 @@ void baseInfoFeedback() {
 	const double rad_to_deg = 57.29577951308232;
 	jsonInfoHttp["r"] = icm_roll * rad_to_deg;
 	jsonInfoHttp["p"] = icm_pitch * rad_to_deg;
-	jsonInfoHttp["y"] = icm_yaw * rad_to_deg;
+	jsonInfoHttp["y"] = getAlignedHeadingDeg();
+	jsonInfoHttp["heading"] = getAlignedHeadingDeg();
+	jsonInfoHttp["acc"] = imu_dmp_accuracy;
+	jsonInfoHttp["valid"] = imu_heading_valid;
 
 	// jsonInfoHttp["q0"] = q0;
 	// jsonInfoHttp["q1"] = q1;

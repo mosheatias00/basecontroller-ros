@@ -279,7 +279,21 @@ const char index_html[] PROGMEM = R"rawliteral(
                             </div>
                             <div>
                                 <span class="num-color mid-num" id="y">-1.01</span>
-                                <span id="yn">YAW (deg)</span>
+                                <span id="yn">HEADING (deg 0-360)</span>
+                            </div>
+                            <div>
+                                <span class="num-color mid-num" id="installBiasDeg">--</span>
+                                <span id="installBiasN">INSTALL BIAS (deg)</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="info-device-box">
+                        <div class="info-box num-box-sma">
+                            <div>
+                                <span class="num-color sma-num">Set installation bias only when robot faces NORTH.</span>
+                            </div>
+                            <div>
+                                <label><button name="speedbtn" class="small-btn" onclick="findInstallBias();">FIND INSTALL BIAS</button></label>
                             </div>
                         </div>
                     </div>
@@ -326,7 +340,7 @@ const char index_html[] PROGMEM = R"rawliteral(
                         <div>
                             <div id="device-gimbal-btn_B">
                                 <label><button name="speedbtn" class="small-btn" onmousedown="gimbalCtrl(3);" ontouchstart="gimbalCtrl(3);" onmouseup="gimbalCtrl(0);" ontouchend="gimbalCtrl(0);">LEFT</button></label>
-                                <label><button name="speedbtn" class="small-btn" onmousedown="gimbalCtrl(5);" ontouchstart="gimbalCtrl(5);" onmouseup="gimbalCtrl(0);" ontouchend="gimbalCtrl(0);">FOEWARD</button></label>
+                                <label><button name="speedbtn" class="small-btn" onmousedown="gimbalCtrl(5);" ontouchstart="gimbalCtrl(5);" onmouseup="gimbalCtrl(0);" ontouchend="gimbalCtrl(0);">FORWARD</button></label>
                                 <label><button name="speedbtn" class="small-btn" onmousedown="gimbalCtrl(4);" ontouchstart="gimbalCtrl(4);" onmouseup="gimbalCtrl(0);" ontouchend="gimbalCtrl(0);">RIGHT</button></label>
                             </div>
                         </div>
@@ -425,6 +439,14 @@ const char index_html[] PROGMEM = R"rawliteral(
                     </div>
                 </div>
                 <div class="info-box json-cmd-info">
+                    <div>
+                        <p>INSTALL_BIAS_NOTE: Point robot to NORTH first, then press button below.</p>
+                        <button class="w-btn" onclick="findInstallBias();">FIND INSTALL BIAS (T:153)</button>
+                    </div>
+                    <div>
+                        <p>CMD_SET_IMU_INSTALL_BIAS: <span id="cmd153" class="cmd-value">{"T":153}</span></p>
+                        <button class="w-btn" onclick="cmdFill('jsonData', 'cmd153');">INPUT</button>
+                    </div>
                     <div>
                         <p>CMD_GET_IMU_DATA: <span id="cmd126" class="cmd-value">{"T":126}</span></p>
                         <button class="w-btn" onclick="cmdFill('jsonData', 'cmd126');">INPUT</button>
@@ -659,6 +681,10 @@ const char index_html[] PROGMEM = R"rawliteral(
         infoUpdate();
     }, 1000);
 
+    setInterval(function() {
+        getIMUInstallBias();
+    }, 1000);
+
     function cmdFill(rawInfo, fillInfo) {
         document.getElementById(rawInfo).value = document.getElementById(fillInfo).innerHTML;
     }
@@ -667,11 +693,60 @@ const char index_html[] PROGMEM = R"rawliteral(
         var xhttp = new XMLHttpRequest();
         xhttp.onreadystatechange = function() {
             if (this.readyState == 4 && this.status == 200) {
+              try {
+                var jsonResponse = JSON.parse(this.responseText);
+                updateInstallBiasDisplay(jsonResponse);
+              } catch (e) {}
               document.getElementById("fbInfo").innerHTML =
               this.responseText;
             }
         };
         xhttp.open("GET", "js?json="+document.getElementById('jsonData').value, true);
+        xhttp.send();
+    }
+    function updateInstallBiasDisplay(jsonResponse) {
+        if (!jsonResponse) return;
+        if (jsonResponse.hasOwnProperty('install_bias_deg')) {
+            document.getElementById("installBiasDeg").innerHTML = Number(jsonResponse.install_bias_deg).toFixed(2);
+        } else if (jsonResponse.hasOwnProperty('north_offset_deg')) {
+            // Legacy key fallback
+            document.getElementById("installBiasDeg").innerHTML = Number(jsonResponse.north_offset_deg).toFixed(2);
+        }
+    }
+    function getIMUInstallBias() {
+        var jsonCmd = {
+            "T": 126  // CMD_GET_IMU_DATA
+        }
+        var jsonString = JSON.stringify(jsonCmd);
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+                try {
+                    var jsonResponse = JSON.parse(this.responseText);
+                    updateInstallBiasDisplay(jsonResponse);
+                } catch (e) {}
+            }
+        };
+        xhttp.open("GET", "js?json=" + jsonString, true);
+        xhttp.send();
+    }
+    function findInstallBias() {
+        send_heartbeat = 0;
+        var jsonCmd = {
+            "T":153
+        }
+        var jsonString = JSON.stringify(jsonCmd);
+        var xhttp = new XMLHttpRequest();
+        xhttp.onreadystatechange = function() {
+            if (this.readyState == 4 && this.status == 200) {
+                document.getElementById("fbInfo").innerHTML = this.responseText;
+                try {
+                    var jsonResponse = JSON.parse(this.responseText);
+                    updateInstallBiasDisplay(jsonResponse);
+                } catch (e) {}
+            }
+        };
+        xhttp.open("GET", "js?json=" + jsonString, true);
         xhttp.send();
     }
     function infoUpdate() {

@@ -433,6 +433,8 @@ void jsonCmdReceiveHandler(){
 												getIMUData();break;
 	case CMD_CALI_IMU_STEP:
 												imuCalibration();break;
+	case CMD_SET_IMU_INSTALL_BIAS:
+										setIMUInstallationBias();break;
 	case CMD_GET_IMU_OFFSET:
 												getIMUOffset();
 												break;

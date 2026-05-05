@@ -374,6 +374,41 @@ double icm_pitch = 0;
 double icm_roll = 0;
 double icm_yaw = 0;
 
+// Installation heading bias (radians).
+// Captured explicitly by T:127 while robot faces north. Saved to flash.
+double imu_north_offset_rad = 0.0;
+bool   imu_calibrated = false;
+
+// DMP Quat9 accuracy (0=unreliable, 3=fully converged). Updated each loop.
+uint8_t imu_dmp_accuracy = 0;
+// Heading is valid only once DMP acc==3 AND yaw has been stable for ~2s.
+bool    imu_heading_valid = false;
+// Stability tracking: require yaw to change < 0.5 deg for 28 consecutive Quat9 samples (~2s at 14Hz).
+double  imu_yaw_prev_stable = 0.0;
+uint8_t imu_stable_count    = 0;
+#define IMU_STABLE_THRESHOLD_RAD  0.0087   // ~0.5 degrees
+#define IMU_STABLE_REQUIRED_COUNT 28       // ~2 seconds at 14Hz ODR
+
+// Normalize angle to [0, 360)
+inline double normalizeDeg360(double d) {
+  while (d >= 360.0) d -= 360.0;
+  while (d <    0.0) d += 360.0;
+  return d;
+}
+
+// Yaw relative to north (radians, wrapped -PI..PI)
+inline double getAlignedYawRad() {
+  double a = -(icm_yaw - imu_north_offset_rad);
+  while (a >  PI) a -= TWO_PI;
+  while (a <= -PI) a += TWO_PI;
+  return a;
+}
+
+// Heading 0-360 degrees (0 = North)
+inline double getAlignedHeadingDeg() {
+  return normalizeDeg360(getAlignedYawRad() * RAD_TO_DEG);
+}
+
 float icm_temp;
 unsigned long last_imu_update = 0;
 

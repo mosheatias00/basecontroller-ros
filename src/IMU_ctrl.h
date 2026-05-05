@@ -10,55 +10,94 @@ void updateIMUData() {
 
 
 // {"T":127}
-// reset qc0 ~ q3
-void imuCalibration() {
-    bool bias_success  = (myICM.getBiasGyroX(&store.biasGyroX) == ICM_20948_Stat_Ok);
-         bias_success &= (myICM.getBiasGyroY(&store.biasGyroY) == ICM_20948_Stat_Ok);
-         bias_success &= (myICM.getBiasGyroZ(&store.biasGyroZ) == ICM_20948_Stat_Ok);
-         bias_success &= (myICM.getBiasAccelX(&store.biasAccelX) == ICM_20948_Stat_Ok);
-         bias_success &= (myICM.getBiasAccelY(&store.biasAccelY) == ICM_20948_Stat_Ok);
-         bias_success &= (myICM.getBiasAccelZ(&store.biasAccelZ) == ICM_20948_Stat_Ok);
-         bias_success &= (myICM.getBiasCPassX(&store.biasCPassX) == ICM_20948_Stat_Ok);
-         bias_success &= (myICM.getBiasCPassY(&store.biasCPassY) == ICM_20948_Stat_Ok);
-         bias_success &= (myICM.getBiasCPassZ(&store.biasCPassZ) == ICM_20948_Stat_Ok);
-
-    if (!bias_success) {
-        return;
-    }
-
-    myICM.setBiasGyroX(-store.biasGyroX);
-    myICM.setBiasGyroY(-store.biasGyroY);
-    myICM.setBiasGyroZ(-store.biasGyroZ);
-    myICM.setBiasAccelX(-store.biasAccelX);
-    myICM.setBiasAccelY(-store.biasAccelY);
-    myICM.setBiasAccelZ(-store.biasAccelZ);
-    myICM.setBiasCPassX(-store.biasCPassX);
-    myICM.setBiasCPassY(-store.biasCPassY);
-    myICM.setBiasCPassZ(-store.biasCPassZ);
-
+// Explicit installation-bias update command:
+// 1) boot and wait for startup IMU runtime calibration to settle (valid=true)
+// 2) point robot to magnetic north
+// 3) send T:127 to save installation heading bias to flash
+void setIMUInstallationBias() {
+  // Refuse bias save until startup runtime calibration converged.
+  if (!imu_heading_valid) {
     jsonInfoHttp.clear();
     jsonInfoHttp["T"] = FEEDBACK_IMU_OFFSET;
+    jsonInfoHttp["calibrated"] = false;
+    jsonInfoHttp["error"] = "IMU runtime calibration not settled (wait valid=true)";
+    jsonInfoHttp["acc"] = imu_dmp_accuracy;
+    jsonInfoHttp["valid"] = imu_heading_valid;
+    String out; serializeJson(jsonInfoHttp, out); Serial.println(out);
+    return;
+  }
 
-    jsonInfoHttp["gx"] = store.biasGyroX;
-    jsonInfoHttp["gy"] = store.biasGyroY;
-    jsonInfoHttp["gz"] = store.biasGyroZ;
+  imu_north_offset_rad = icm_yaw;
+  imu_calibrated = true;
 
-    jsonInfoHttp["ax"] = store.biasAccelX;
-    jsonInfoHttp["ay"] = store.biasAccelY;
-    jsonInfoHttp["az"] = store.biasAccelZ;
+  // Save to flash so it persists across reboots.
+  File file = LittleFS.open("/imu_cal.json", "w");
+  if (file) {
+    JsonDocument doc;
+    // Use the new key; keep backward compatibility in loader.
+    doc["install_bias"] = imu_north_offset_rad;
+    serializeJson(doc, file);
+    file.close();
+    Serial.printf("[IMU bias] Saved install_bias=%.4f rad (%.1f deg)\n",
+                  imu_north_offset_rad, imu_north_offset_rad * RAD_TO_DEG);
+  } else {
+    Serial.println("[IMU bias] ERROR: could not write /imu_cal.json");
+  }
 
-    jsonInfoHttp["cx"] = store.biasCPassX;
-    jsonInfoHttp["cy"] = store.biasCPassY;
-    jsonInfoHttp["cz"] = store.biasCPassZ;
+  jsonInfoHttp.clear();
+  jsonInfoHttp["T"] = FEEDBACK_IMU_OFFSET;
+  jsonInfoHttp["calibrated"] = true;
+  jsonInfoHttp["install_bias_deg"] = imu_north_offset_rad * RAD_TO_DEG;
+  jsonInfoHttp["north_offset_deg"] = imu_north_offset_rad * RAD_TO_DEG; // legacy key
+  jsonInfoHttp["heading"] = getAlignedHeadingDeg();
+  jsonInfoHttp["acc"] = imu_dmp_accuracy;
+  jsonInfoHttp["valid"] = imu_heading_valid;
+  String out;
+  serializeJson(jsonInfoHttp, out);
+  Serial.println(out);
+}
 
-    String getInfoJsonString;
-    serializeJson(jsonInfoHttp, getInfoJsonString);
-    Serial.println(getInfoJsonString);
+// Backward-compatible command entry point (T:127).
+void imuCalibration() {
+  setIMUInstallationBias();
+}
 
-    qc0 = 1.0;
-    qc1 = 0.0;
-    qc2 = 0.0;
-    qc3 = 0.0;
+// Startup runtime calibration: reset convergence flags each boot.
+// The loop sets valid=true once Quat9 is accurate and stable.
+void startIMURuntimeCalibration() {
+  imu_dmp_accuracy = 0;
+  imu_heading_valid = false;
+  imu_stable_count = 0;
+  imu_yaw_prev_stable = 0.0;
+  Serial.println("[IMU runtime] Startup calibration started; waiting for stable heading...");
+}
+
+// Load saved calibration from flash at boot.
+// If no file found, defaults to 0 (uncalibrated).
+void loadIMUCalibration() {
+  File file = LittleFS.open("/imu_cal.json", "r");
+  if (!file) {
+    Serial.println("[IMU cal] No saved calibration found, defaulting to 0.");
+    imu_north_offset_rad = 0.0;
+    imu_calibrated = false;
+    return;
+  }
+  JsonDocument doc;
+  DeserializationError err = deserializeJson(doc, file);
+  file.close();
+  bool hasNew = doc["install_bias"].is<double>();
+  bool hasOld = doc["north_offset"].is<double>();
+  if (err || (!hasNew && !hasOld)) {
+    Serial.println("[IMU cal] Corrupt calibration file, defaulting to 0.");
+    imu_north_offset_rad = 0.0;
+    imu_calibrated = false;
+    return;
+  }
+  imu_north_offset_rad = hasNew ? doc["install_bias"].as<double>()
+                                : doc["north_offset"].as<double>();
+  imu_calibrated = true;
+  Serial.printf("[IMU bias] Loaded install_bias=%.4f rad (%.1f deg)\n",
+                imu_north_offset_rad, imu_north_offset_rad * RAD_TO_DEG);
 }
 
 // {"T":127}
@@ -122,9 +161,16 @@ void getIMUData() {
 	jsonInfoHttp.clear();
 	jsonInfoHttp["T"] = FEEDBACK_IMU_DATA;
 
-  jsonInfoHttp["r"] = icm_roll;
-  jsonInfoHttp["p"] = icm_pitch;
-  jsonInfoHttp["y"] = icm_yaw;
+  const double rad_to_deg = 57.29577951308232;
+  jsonInfoHttp["r"] = icm_roll * rad_to_deg;
+  jsonInfoHttp["p"] = icm_pitch * rad_to_deg;
+  jsonInfoHttp["y"] = getAlignedHeadingDeg();
+  jsonInfoHttp["heading"] = getAlignedHeadingDeg();
+  jsonInfoHttp["calibrated"] = imu_calibrated;
+  jsonInfoHttp["acc"] = imu_dmp_accuracy;
+  jsonInfoHttp["valid"] = imu_heading_valid;
+  jsonInfoHttp["install_bias_deg"] = imu_north_offset_rad * RAD_TO_DEG;
+  jsonInfoHttp["north_offset_deg"] = imu_north_offset_rad * RAD_TO_DEG;
 
   jsonInfoHttp["q0"] = q0;
   jsonInfoHttp["q1"] = q1;
