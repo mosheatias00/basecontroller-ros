@@ -4,10 +4,13 @@ This file documents the customizations applied in this repository during the cur
 
 ## 1) Architecture and Motion Stack Changes
 
-### IMU usage change
+### IMU usage
 - Base distance is no longer computed by IMU double integration.
-- IMU is used for attitude and heading (yaw) reference.
+- IMU is used for attitude and heading (yaw) reference only.
 - Wheel odometry is the source of base translation distance.
+- Heading is derived from ICM-20948 DMP Quat9 output with two independent calibration layers:
+  - **Runtime calibration** — runs automatically at boot; waits for DMP accuracy=3 and yaw stability before marking heading valid.
+  - **Installation bias** — explicitly saved by the operator once the robot is physically installed and pointing north; persisted across reboots in `/imu_cal.json` on LittleFS.
 
 ### Wheel odometry integration
 - Added wheel odometry state:
@@ -37,6 +40,13 @@ This file documents the customizations applied in this repository during the cur
   - Resets base wheel-odometry reference point.
 
 ### New commands
+- `T:153` -> `CMD_SET_IMU_INSTALL_BIAS`
+  - Saves the current yaw as the installation (north) bias to `/imu_cal.json`.
+  - Only succeeds when DMP accuracy == 3 AND yaw has been stable for ~2 seconds.
+  - Operator must point the robot to true north before sending this command.
+  - `T:127` is a backward-compatible alias for this command.
+  - Example: `{"T":153}`
+
 - `T:150` -> `CMD_BASE_DRIVE_PLAN`
   - Starts a multi-leg plan.
   - Format:
@@ -81,6 +91,14 @@ Added/extended fields:
 - `mhz` -> measured motor loop frequency
 - `ts` -> telemetry timestamp (ms)
 
+IMU feedback fields (T:126):
+- `r`, `p`, `y` / `heading` — roll, pitch, yaw in degrees (heading is north-corrected)
+- `calibrated` — true once installation bias has been saved
+- `valid` — true once DMP has settled at boot (accuracy=3, yaw stable)
+- `acc` — DMP compass accuracy (0=unreliable … 3=fully converged)
+- `install_bias_deg` — stored installation bias in degrees
+- `q0`–`q3` — raw DMP quaternion
+
 Compatibility mapping retained in IMU feedback:
 - Legacy keys `ix`, `iy`, `id`, `ivx`, `ivy` are preserved and now sourced from wheel odometry.
 
@@ -96,7 +114,9 @@ Compatibility mapping retained in IMU feedback:
 
 ## 5) Web UI Changes
 
-- No new UI panels were added. All new functionality is accessible via JSON API only.
+- **Installation bias display** — `INSTALL BIAS (deg)` field always visible; polled automatically every second via T:126.
+- **Find Install Bias button** — operator button with instruction note: "Point robot to NORTH first, then press button below." Sends T:153 and updates the bias display on response.
+- **Stable angles** — r/p/y display no longer jumps; Euler angles are only updated from DMP packets with accuracy ≥ 1, suppressing magnetometer recalibration glitches.
 
 ## 6) Build and Environment Changes
 
@@ -111,29 +131,30 @@ Compatibility mapping retained in IMU feedback:
 ### OTA target update
 - Default OTA upload target set to `192.168.1.118`.
 
-## 7) New Evaluation Firmware
+## 7) Evaluation Firmware
 
-- Added `src/eval/main.cpp` as standalone IMU distance evaluation firmware.
-- Contains dedicated web UI and diagnostic routines separated from main base firmware.
+- `src/eval/main.cpp` is a standalone diagnostic firmware (separate PlatformIO env).
+- Separated from main base firmware; used for low-level IMU experiments only.
 
 ## 8) Additional Fixes
 
 - IMU bias set/get calls corrected to use proper axis-specific APIs for gyro/accel/compass Y/Z setters.
 - Removed stale IMU experiment artifacts and aligned flow with wheel odometry architecture.
+- DMP Quat9 accuracy=0 packets no longer update Euler angles, eliminating transient r/p/y jumps during magnetometer recalibration bursts.
 
 ## 9) Files Changed in This Customization Set
 
 - `platformio.ini`
-- `src/IMU_ctrl.h`
-- `src/ROS_Driver.cpp`
-- `src/json_cmd.h`
+- `src/IMU_ctrl.h` — installation bias save/load, runtime calibration, T:153 handler
+- `src/ROS_Driver.cpp` — boot calibration flow, DMP accuracy gating for Euler update
+- `src/json_cmd.h` — T:153 / T:127 command definitions
 - `src/movtion_module.h`
-- `src/uart_ctrl.h`
+- `src/uart_ctrl.h` — T:153 dispatch
 - `src/udp_log.h`
 - `src/ugv_advance.h`
-- `src/ugv_config.h`
-- `src/web_page.h`
-- `src/eval/main.cpp` (new)
+- `src/ugv_config.h` — `imu_north_offset_rad`, calibration state variables, `getAlignedHeadingDeg()`
+- `src/web_page.h` — install bias display, Find Install Bias button, periodic T:126 poll
+- `src/eval/main.cpp` (standalone eval, unchanged)
 
 ## 10) Gimbal / Camera Pedestal Alignment
 
